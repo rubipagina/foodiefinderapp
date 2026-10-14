@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foodie Finder - Navojoa, Sonora</title>
+
+    <!-- Tailwind CSS Script -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Configuración de colores de marca Foodie Finder -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#fdf2f2',
+                            100: '#fce8e8',
+                            500: '#f29595',
+                            600: '#b40000',
+                            700: '#8c0000',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        #map { width: 100%; height: 100%; min-height: 380px; }
+        .custom-paw-marker { background: transparent; border: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .tab-btn.active {
+            border-bottom: 2px solid #b40000;
+            color: #b40000;
+            font-weight: 700;
+        }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-full flex flex-col antialiased">
+
+    <!-- Header con el Branding de Foodie Finder -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
+            <!-- Logo & Slogan -->
+            <div class="flex items-center space-x-3 shrink-0 cursor-pointer" onclick="resetFiltros()">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#b40000] to-[#f29595] flex items-center justify-center text-white shadow-md shadow-brand-600/20 text-2xl font-bold border-2 border-white">
+                    🐾
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-black leading-tight text-[#b40000] tracking-tight flex items-center gap-1.5 uppercase">
+                        Foodie Finder
+                        <span class="bg-brand-50 text-[#b40000] text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-brand-500/30">Navojoa</span>
+                    </h1>
+                    <p class="text-[10px] font-semibold text-[#f29595] tracking-widest uppercase hidden sm:block">“Del Mapa a tu Plato”</p>
+                </div>
+            </div>
+
+            <!-- Global Search Box -->
+            <div class="flex-1 max-w-md relative">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    🔍
+                </div>
+                <input type="text" id="searchInput" placeholder="Buscar por platillo, nombre o colonia..." 
+                       class="w-full pl-10 pr-4 py-2 bg-slate-100/80 border border-transparent rounded-full text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#b40000] focus:ring-2 focus:ring-[#b40000]/20 transition-all">
+            </div>
+
+            <!-- User Actions & Favorites -->
+            <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
+                <button onclick="toggleFavoritosFiltro()" id="btnFavoritos" 
+                        class="bg-brand-50 border border-brand-500/40 text-[#b40000] px-3.5 py-2 rounded-full text-xs sm:text-sm font-semibold hover:bg-brand-100 transition flex items-center space-x-1.5 shadow-xs">
+                    <span>❤️</span>
+                    <span class="hidden md:inline">Favoritos</span>
+                    <span id="favCount" class="bg-[#b40000] text-white text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                </button>
+
+                <button onclick="abrirModalAgregarRestaurante()" class="hidden sm:flex items-center space-x-1 bg-slate-900 text-white px-3.5 py-2 rounded-full text-xs font-semibold hover:bg-slate-800 transition shadow-xs">
+                    <span>➕</span>
+                    <span>Agregar Lugar</span>
+                </button>
+
+                <div id="authContainer" class="pl-1 border-l border-slate-200">
+                    <!-- Dynamic Auth Render -->
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden relative" style="height: calc(100vh - 5rem);">
+        
+        <!-- LEFT PANEL: Filter & Restaurant Listing -->
+        <section class="w-full md:w-[450px] lg:w-[480px] shrink-0 bg-white border-r border-slate-200 flex flex-col h-full z-10 shadow-sm">
+            
+            <div class="p-4 border-b border-slate-100 space-y-3 bg-slate-50/50">
+                <div class="flex items-center justify-between">
+                    <h2 id="tituloLista" class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <span>🍽️</span> Lugares destacados
+                    </h2>
+                    <span id="contadorResultados" class="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-full">
+                        Cargando...
+                    </span>
+                </div>
+
+                <!-- Category Filter Pills -->
+                <div class="flex space-x-1.5 overflow-x-auto no-scrollbar pb-1 pt-0.5 text-xs font-medium" id="contenedorCategorias">
+                    <!-- Populated by JS -->
+                </div>
+
+                <!-- Budget Filters -->
+                <div class="flex items-center justify-between text-xs pt-1">
+                    <div class="flex items-center space-x-1 text-slate-600">
+                        <span class="font-semibold text-slate-500 mr-1">Precio:</span>
+                        <button onclick="filtrarPresupuesto('Todos')" id="btnPrecio-Todos" class="px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 font-semibold text-slate-700">Todos</button>
+                        <button onclick="filtrarPresupuesto('$')" id="btnPrecio-$" class="px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-600">$</button>
+                        <button onclick="filtrarPresupuesto('$$')" id="btnPrecio-$$" class="px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-600">$$</button>
+                        <button onclick="filtrarPresupuesto('$$$')" id="btnPrecio-$$$" class="px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-600">$$$</button>
+                    </div>
+
+                    <button onclick="resetFiltros()" class="text-[#b40000] hover:underline font-semibold text-[11px]">
+                        Limpiar filtros
+                    </button>
+                </div>
+            </div>
+
+            <!-- Restaurant List Scrollable Container -->
+            <div id="restaurant-list" class="flex-1 overflow-y-auto p-4 space-y-3.5 divide-y divide-slate-100">
+                <!-- Dynamic cards -->
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Leaflet Map -->
+        <section class="flex-1 h-full relative z-0 bg-slate-200">
+            <div id="map"></div>
+            
+            <div class="absolute bottom-5 right-5 z-[400] glass-panel px-3.5 py-2 rounded-xl border border-white/60 shadow-lg text-xs flex items-center space-x-2 text-slate-700 font-medium">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Navojoa, Sonora (Perla del Mayo)</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL 1: Restaurant Details, Menu, Reviews & Reservations -->
+    <div id="restaurantModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[9999] hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden border border-slate-100">
+            <div class="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/80 shrink-0">
+                <div class="flex items-center space-x-3.5">
+                    <div id="modalEmojiContainer" class="w-12 h-12 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-2xl shadow-xs">
+                        🌮
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span id="modalCategoria" class="text-xs font-bold text-[#b40000] uppercase tracking-wider">Categoría</span>
+                            <span class="text-slate-300">•</span>
+                            <span id="modalPrecio" class="text-xs font-semibold text-slate-600">$$</span>
+                            <span class="text-slate-300">•</span>
+                            <span id="modalCalificacion" class="text-xs font-bold text-amber-500 flex items-center gap-0.5">⭐ 4.8</span>
+                        </div>
+                        <h2 id="modalNombre" class="text-xl font-extrabold text-slate-900 leading-tight">Nombre Restaurante</h2>
+                        <p id="modalUbicacion" class="text-xs text-slate-500 mt-0.5">📍 Colonia, Navojoa</p>
+                    </div>
+                </div>
+                <button onclick="cerrarModal()" class="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center text-lg font-bold transition">
+                    &times;
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex border-b border-slate-200 bg-white px-5 shrink-0 text-sm font-medium text-slate-500">
+                <button onclick="switchTab('menu')" id="tab-menu" class="tab-btn active py-3 px-4 transition">📋 Menú Especial</button>
+                <button onclick="switchTab('reviews')" id="tab-reviews" class="tab-btn py-3 px-4 transition">⭐ Reseñas & Calificaciones</button>
+                <button onclick="switchTab('reserva')" id="tab-reserva" class="tab-btn py-3 px-4 transition">📅 Reservar Mesa</button>
+            </div>
+
+            <div class="p-5 overflow-y-auto flex-1 space-y-4">
+                <!-- TAB 1: MENU -->
+                <div id="content-menu" class="space-y-3">
+                    <p class="text-xs text-slate-500 italic">Especialidades recomendadas:</p>
+                    <div id="modalMenuList" class="space-y-2.5"></div>
+                </div>
+
+                <!-- TAB 2: REVIEWS -->
+                <div id="content-reviews" class="hidden space-y-5">
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Escribe tu opinión</h4>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-medium text-slate-600">Tu calificación:</span>
+                            <select id="nuevaCalificacion" class="bg-white border border-slate-200 rounded-lg text-xs p-1.5 font-bold text-amber-500 focus:outline-none focus:ring-1 focus:ring-[#b40000]">
+                                <option value="5">⭐⭐⭐⭐⭐ (5.0)</option>
+                                <option value="4">⭐⭐⭐⭐ (4.0)</option>
+                                <option value="3">⭐⭐⭐ (3.0)</option>
+                                <option value="2">⭐⭐ (2.0)</option>
+                                <option value="1">⭐ (1.0)</option>
+                            </select>
+                        </div>
+                        <textarea id="nuevoComentario" rows="2" placeholder="¿Qué tal estuvo la comida, el servicio y el ambiente?" class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#b40000]/20"></textarea>
+                        <button onclick="guardarNuevaResena()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg transition shadow-xs">
+                            Publicar Reseña
+                        </button>
+                    </div>
+                    <div id="modalReviewsList" class="space-y-3"></div>
+                </div>
+
+                <!-- TAB 3: RESERVATIONS -->
+                <div id="content-reserva" class="hidden">
+                    <div class="bg-brand-50/60 p-5 rounded-2xl border border-brand-100 space-y-4">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base">Reservar Mesa en línea</h3>
+                            <p class="text-xs text-slate-600">Recibirás confirmación directa del establecimiento en minutos.</p>
+                        </div>
+                        <form onsubmit="procesarReservacion(event)" class="space-y-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Nombre Completo</label>
+                                    <input type="text" id="resNombre" required placeholder="Tu nombre" class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#b40000]">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Teléfono / WhatsApp</label>
+                                    <input type="tel" id="resTelefono" required placeholder="642 000 0000" class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#b40000]">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Fecha</label>
+                                    <input type="date" id="resFecha" required class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#b40000]">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Hora</label>
+                                    <input type="time" id="resHora" required class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#b40000]">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Personas</label>
+                                    <input type="number" id="resPersonas" min="1" max="15" value="2" required class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#b40000]">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-[#b40000] hover:bg-[#8c0000] text-white font-bold text-xs py-3 rounded-xl transition shadow-md shadow-brand-600/20">
+                                Confirmar y Solicitar Reservación
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: User Profile Settings -->
+    <div id="authModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[9999] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl relative border border-slate-100">
+            <button onclick="cerrarAuthModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            <div class="text-center space-y-2 mb-5">
+                <div class="text-4xl">👤</div>
+                <h3 class="text-lg font-extrabold text-slate-900">Perfil de Usuario</h3>
+                <p class="text-xs text-slate-500">Personaliza tus reseñas y favoritos.</p>
+            </div>
+            <form onsubmit="guardarUsuario(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Nombre o Apodo</label>
+                    <input type="text" id="userInputName" required placeholder="Ej. Rubí" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Elige un Avatar</label>
+                    <div class="flex justify-between text-2xl bg-slate-50 p-2.5 rounded-xl border border-slate-200" id="avatarSelector">
+                        <button type="button" onclick="selectAvatar('🤠')" class="avatar-opt p-1 rounded-lg hover:bg-white transition ring-2 ring-[#b40000]">🤠</button>
+                        <button type="button" onclick="selectAvatar('🌮')" class="avatar-opt p-1 rounded-lg hover:bg-white transition">🌮</button>
+                        <button type="button" onclick="selectAvatar('👩‍🍳')" class="avatar-opt p-1 rounded-lg hover:bg-white transition">👩‍🍳</button>
+                        <button type="button" onclick="selectAvatar('🥑')" class="avatar-opt p-1 rounded-lg hover:bg-white transition">🥑</button>
+                        <button type="button" onclick="selectAvatar('🍕')" class="avatar-opt p-1 rounded-lg hover:bg-white transition">🍕</button>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-slate-800 transition">
+                    Guardar Perfil
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 3: Add New Restaurant -->
+    <div id="addRestaurantModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[9999] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <button onclick="cerrarAddRestaurantModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            <div class="mb-4">
+                <h3 class="text-lg font-extrabold text-slate-900">Agregar Nuevo Restaurante 📍</h3>
+                <p class="text-xs text-slate-500">Añade una recomendación culinaria en Navojoa.</p>
+            </div>
+            <form onsubmit="guardarNuevoRestaurante(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Nombre del Establecimiento</label>
+                    <input type="text" id="newNombre" required placeholder="Ej. Tacos El Güero" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Categoría</label>
+                        <select id="newCategoria" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none bg-white">
+                            <option value="Tacos">Tacos 🌮</option>
+                            <option value="Sushi">Sushi 🍣</option>
+                            <option value="Mariscos">Mariscos 🦐</option>
+                            <option value="Cafés">Cafés ☕</option>
+                            <option value="Hamburguesas">Hamburguesas 🍔</option>
+                            <option value="Postres">Postres 🍰</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Presupuesto</label>
+                        <select id="newPrecio" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none bg-white">
+                            <option value="$">$ (Económico)</option>
+                            <option value="$$">$$ (Moderado)</option>
+                            <option value="$$$">$$$ (Premium)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Colonia o Referencia</label>
+                    <input type="text" id="newColonia" required placeholder="Ej. Col. Deportiva" class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Latitud (Aprox)</label>
+                        <input type="number" step="any" id="newLat" value="27.075" required class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Longitud (Aprox)</label>
+                        <input type="number" step="any" id="newLng" value="-109.445" required class="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#b40000] focus:outline-none">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-[#b40000] text-white text-xs font-bold py-3 rounded-xl hover:bg-[#8c0000] transition shadow-md shadow-brand-600/20 mt-2">
+                    Añadir a Navojoa
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Leaflet JS & App Logic -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const restaurantesIniciales = [
+            { 
+                id: 1, 
+                nombre: "Asados El Vaquero", 
+                categoria: "Tacos", 
+                emoji: "🌮", 
+                lat: 27.0765, 
+                lng: -109.4442, 
+                colonia: "Centro", 
+                precio: "$$", 
+                calificacion: "4.8",
+                menu: [
+                    { plato: "Orden de Tacos de Sirloin (5 pzas)", precio: "$140 MXN", desc: "Sirloin de primera en tortilla artesanal con guacamole fresco." },
+                    { plato: "Costilla Cargada Asada", precio: "$280 MXN", desc: "Corte jugoso a las brasas de mezquite con papas doradas." },
+                    { plato: "Vampiro de Asada", precio: "$55 MXN", desc: "Tortilla tostada al carbón con queso fundido y carne asada." }
+                ],
+                reseñas: [
+                    { usuario: "Carlos M.", foto: "🤠", estrofas: 5, comentario: "¡Los mejores tacos de carne asada de todo Navojoa! La salsa martajada está increíble." },
+                    { usuario: "Valeria R.", foto: "🥑", estrofas: 4.5, comentario: "Muy buena atención y la carne súper suavecita." }
+                ]
+            },
+            { 
+                id: 2, 
+                nombre: "Nori Sushi Bar", 
+                categoria: "Sushi", 
+                emoji: "🍣", 
+                lat: 27.0725, 
+                lng: -109.4482, 
+                colonia: "Col. Deportiva", 
+                precio: "$$$", 
+                calificacion: "4.7",
+                menu: [
+                    { plato: "Culichi Roll Gratinado", precio: "$175 MXN", desc: "Camarón y queso crema por dentro con topping gratinado de serrano." },
+                    { plato: "Yakimeshi Especial", precio: "$135 MXN", desc: "Arroz frito con res, pollo, camarón y toque de tampico." },
+                    { plato: "Tostadas de Atún Sellado", precio: "$150 MXN", desc: "2 piezas con aderezo chipotle y aguacate." }
+                ],
+                reseñas: [
+                    { usuario: "Fernanda G.", foto: "🍕", estrofas: 5, comentario: "El Culichi Roll es garantía pura. Excelente ambiente familiar." }
+                ]
+            },
+            { 
+                id: 3, 
+                nombre: "Café de la Plaza", 
+                categoria: "Cafés", 
+                emoji: "☕", 
+                lat: 27.0780, 
+                lng: -109.4420, 
+                colonia: "Centro", 
+                precio: "$", 
+                calificacion: "4.9",
+                menu: [
+                    { plato: "Café de Olla Tradicional", precio: "$40 MXN", desc: "Preparado con piloncillo de la región y canela." },
+                    { plato: "Pay de Queso con Zarzamora", precio: "$65 MXN", desc: "Receta casera de la casa, horneado diariamente." },
+                    { plato: "Panini Jamón Serrano y Gouda", precio: "$98 MXN", desc: "Pan de masa madre tostado con pesto casero." }
+                ],
+                reseñas: [
+                    { usuario: "Lupita S.", foto: "🐱", estrofas: 5, comentario: "Ideal para trabajar o platicar por la tarde. El café de olla sabe a tradición." }
+                ]
+            },
+            { 
+                id: 4, 
+                nombre: "Mariscos El Rey del Mayo", 
+                categoria: "Mariscos", 
+                emoji: "🦐", 
+                lat: 27.0810, 
+                lng: -109.4410, 
+                colonia: "Juárez", 
+                precio: "$$", 
+                calificacion: "4.8",
+                menu: [
+                    { plato: "Molcajete Preparado", precio: "$190 MXN", desc: "Callo, camarón crudo y cocido, y pulpo en salsa negra de la casa." },
+                    { plato: "Tacos Gobernador", precio: "$120 MXN", desc: "3 tacos en tortilla de maíz con queso gratinado y camarón guisado." }
+                ],
+                reseñas: [
+                    { usuario: "Roberto B.", foto: "🤠", estrofas: 5, comentario: "¡Marisco ultra fresco! Las salsas están de 10." }
+                ]
+            },
+            { 
+                id: 5, 
+                nombre: "La Burguesía Navojoa", 
+                categoria: "Hamburguesas", 
+                emoji: "🍔", 
+                lat: 27.0690, 
+                lng: -109.4510, 
+                colonia: "Reforma", 
+                precio: "$$", 
+                calificacion: "4.6",
+                menu: [
+                    { plato: "Hamburguesa Mermelada Tocino", precio: "$155 MXN", desc: "200g carne Angus, mermelada de tocino, queso cheddar ahumado." },
+                    { plato: "Papas Trufadas", precio: "$75 MXN", desc: "Papas crujientes con aceite de trufa y parmesano." }
+                ],
+                reseñas: [
+                    { usuario: "Jorge T.", foto: "🍕", estrofas: 4, comentario: "Súper llenadoras y la carne tiene muy buen sazón." }
+                ]
+            },
+            { 
+                id: 6, 
+                nombre: "Pastelería y Dulces Sonorenses", 
+                categoria: "Postres", 
+                emoji: "🍰", 
+                lat: 27.0750, 
+                lng: -109.4400, 
+                colonia: "Centro", 
+                precio: "$", 
+                calificacion: "4.9",
+                menu: [
+                    { plato: "Coyotas de Cajeta (Paq. 5)", precio: "$70 MXN", desc: "Tradicionales coyotas horneadas con piloncillo y cajeta." },
+                    { plato: "Pastel Tres Leches", precio: "$280 MXN", desc: "Pastel completo super húmedo y fresco." }
+                ],
+                reseñas: [
+                    { usuario: "Martha H.", foto: "🐱", estrofas: 5, comentario: "Las coyotas más ricas para regalar o comer calientitas." }
+                ]
+            }
+        ];
+
+        let restaurantes = [...restaurantesIniciales];
+        let favoritos = JSON.parse(localStorage.getItem('foodie_navojoa_favs')) || [];
+        let usuarioActual = JSON.parse(localStorage.getItem('foodie_navojoa_user')) || { nombre: "Rubí", foto: "👩‍🍳" };
+        let avatarSeleccionadoTemp = "👩‍🍳";
+        let filtroCategoriaActual = "Todos";
+        let filtroPresupuestoActual = "Todos";
+        let mostrandoSoloFavoritos = false;
+        let restauranteActivoModal = null;
+        let map, marcadoresLayer;
+
+        const categorias = [
+            { nombre: "Todos", emoji: "✨" },
+            { nombre: "Tacos", emoji: "🌮" },
+            { nombre: "Sushi", emoji: "🍣" },
+            { nombre: "Mariscos", emoji: "🦐" },
+            { nombre: "Cafés", emoji: "☕" },
+            { nombre: "Hamburguesas", emoji: "🍔" },
+            { nombre: "Postres", emoji: "🍰" }
+        ];
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const restGuardados = JSON.parse(localStorage.getItem('foodie_navojoa_custom_rest'));
+            if (restGuardados && Array.isArray(restGuardados)) {
+                restaurantes = [...restaurantes, ...restGuardados];
+            }
+
+            renderAuthWidget();
+            renderCategorias();
+            initMap();
+            filtrarYMostrar();
+
+            document.getElementById('searchInput').addEventListener('input', function() {
+                mostrandoSoloFavoritos = false;
+                filtrarYMostrar();
+            });
+        });
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([27.0755, -109.4452], 14);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 16,
+                attribution: 'Foodie Finder &copy; Esri'
+            }).addTo(map);
+
+            marcadoresLayer = L.layerGroup().addTo(map);
+        }
+
+        function renderCategorias() {
+            const contenedor = document.getElementById('contenedorCategorias');
+            contenedor.innerHTML = '';
+            categorias.forEach(cat => {
+                const activo = filtroCategoriaActual === cat.nombre;
+                const btn = document.createElement('button');
+                btn.className = `px-3 py-1.5 rounded-full font-bold transition shrink-0 flex items-center space-x-1 border ${
+                    activo 
+                    ? 'bg-[#b40000] text-white border-[#b40000] shadow-sm' 
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-brand-50'
+                }`;
+                btn.innerHTML = `<span>${cat.emoji}</span><span>${cat.nombre}</span>`;
+                btn.onclick = () => {
+                    filtroCategoriaActual = cat.nombre;
+                    mostrandoSoloFavoritos = false;
+                    renderCategorias();
+                    filtrarYMostrar();
+                };
+                contenedor.appendChild(btn);
+            });
+        }
+
+        function filtrarPresupuesto(precio) {
+            filtroPresupuestoActual = precio;
+            ['Todos', '$', '$$', '$$$'].forEach(p => {
+                const b = document.getElementById(`btnPrecio-${p}`);
+                if (b) {
+                    if (p === precio) {
+                        b.className = "px-2 py-0.5 rounded border border-[#b40000] bg-[#b40000] text-white font-semibold";
+                    } else {
+                        b.className = "px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-600";
+                    }
+                }
+            });
+            filtrarYMostrar();
+        }
+
+        function filtrarYMostrar() {
+            const textoBusqueda = document.getElementById('searchInput').value.toLowerCase();
+            
+            let lista = restaurantes.filter(r => {
+                const matchTexto = r.nombre.toLowerCase().includes(textoBusqueda) || 
+                                   r.categoria.toLowerCase().includes(textoBusqueda) || 
+                                   r.colonia.toLowerCase().includes(textoBusqueda) ||
+                                   r.menu.some(m => m.plato.toLowerCase().includes(textoBusqueda));
+                
+                const matchCat = filtroCategoriaActual === 'Todos' || r.categoria === filtroCategoriaActual;
+                const matchPrecio = filtroPresupuestoActual === 'Todos' || r.precio === filtroPresupuestoActual;
+                const matchFav = !mostrandoSoloFavoritos || favoritos.includes(r.id);
+
+                return matchTexto && matchCat && matchPrecio && matchFav;
+            });
+
+            renderListaRestaurantes(lista);
+            renderMarcadoresMapa(lista);
+        }
+
+        function renderListaRestaurantes(lista) {
+            const contenedor = document.getElementById('restaurant-list');
+            contenedor.innerHTML = '';
+            document.getElementById('contadorResultados').innerText = `${lista.length} lugares`;
+
+            if (lista.length === 0) {
+                contenedor.innerHTML = `
+                    <div class="text-center py-10 space-y-2">
+                        <span class="text-3xl">🐾</span>
+                        <p class="text-xs text-slate-400 font-medium">No se encontraron establecimientos en Navojoa.</p>
+                    </div>`;
+                return;
+            }
+
+            lista.forEach(rest => {
+                const esFav = favoritos.includes(rest.id);
+                const card = document.createElement('div');
+                card.className = "bg-white p-4 rounded-2xl border border-slate-100 hover:border-[#b40000]/40 hover:shadow-md transition cursor-pointer relative group";
+                card.innerHTML = `
+                    <button onclick="event.stopPropagation(); toggleFavorito(${rest.id})" class="absolute top-4 right-4 text-lg p-1 hover:scale-110 transition">
+                        ${esFav ? '❤️' : '🤍'}
+                    </button>
+                    <div class="flex items-start space-x-3 pr-8">
+                        <div class="w-11 h-11 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center text-xl shrink-0 shadow-2xs">
+                            ${rest.emoji}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-[10px] font-bold text-[#b40000] uppercase tracking-wider">${rest.categoria}</span>
+                                <span class="text-slate-300">•</span>
+                                <span class="text-[11px] font-semibold text-slate-500">${rest.precio}</span>
+                            </div>
+                            <h3 class="font-bold text-slate-900 text-sm truncate group-hover:text-[#b40000] transition">${rest.nombre}</h3>
+                            <p class="text-xs text-slate-500 mt-0.5 truncate">📍 ${rest.colonia}, Navojoa</p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span class="font-bold text-amber-500 flex items-center gap-1">⭐ ${rest.calificacion}</span>
+                        <button onclick="event.stopPropagation(); abrirModal(${rest.id})" class="bg-brand-50 text-[#b40000] px-3 py-1 rounded-full font-bold hover:bg-[#b40000] hover:text-white transition shadow-2xs">
+                            Ver Menú &rarr;
+                        </button>
+                    </div>
+                `;
+                card.onclick = () => centrarEnRestaurante(rest);
+                contenedor.appendChild(card);
+            });
+        }
+
+        function renderMarcadoresMapa(lista) {
+            marcadoresLayer.clearLayers();
+            lista.forEach(rest => {
+                const icono = L.divIcon({
+                    html: `
+                        <div class="relative flex items-center justify-center w-10 h-10 bg-[#b40000] text-white rounded-full shadow-lg border-2 border-white hover:scale-110 transition-transform">
+                            <span class="text-base">🐾</span>
+                            <span class="absolute -top-1 -right-1 text-xs bg-white text-slate-800 rounded-full px-1 shadow">${rest.emoji}</span>
+                        </div>
+                    `,
+                    className: 'custom-paw-marker',
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 20],
+                    popupAnchor: [0, -20]
+                });
+
+                const marker = L.marker([rest.lat, rest.lng], { icon: icono })
+                    .bindPopup(`
+                        <div class="p-1 font-sans text-center">
+                            <span class="text-[10px] font-bold text-[#b40000] uppercase">${rest.categoria}</span>
+                            <h4 class="font-bold text-slate-900 text-sm mt-0.5">${rest.nombre}</h4>
+                            <p class="text-xs text-slate-500 mt-0.5">📍 ${rest.colonia} • ⭐ ${rest.calificacion}</p>
+                            <button onclick="abrirModal(${rest.id})" class="mt-2 w-full bg-[#b40000] text-white text-xs py-1.5 rounded-lg font-bold hover:bg-[#8c0000] transition shadow-xs">Ver Menú & Reservar</button>
+                        </div>
+                    `);
+                
+                marcadoresLayer.addLayer(marker);
+                rest.markerRef = marker;
+            });
+        }
+
+        function centrarEnRestaurante(rest) {
+            map.flyTo([rest.lat, rest.lng], 16, { duration: 1.2 });
+            if (rest.markerRef) rest.markerRef.openPopup();
+        }
+
+        function toggleFavorito(id) {
+            if (favoritos.includes(id)) {
+                favoritos = favoritos.filter(favId => favId !== id);
+            } else {
+                favoritos.push(id);
+            }
+            localStorage.setItem('foodie_navojoa_favs', JSON.stringify(favoritos));
+            document.getElementById('favCount').innerText = favoritos.length;
+            filtrarYMostrar();
+        }
+
+        function toggleFavoritosFiltro() {
+            mostrandoSoloFavoritos = !mostrandoSoloFavoritos;
+            const btn = document.getElementById('btnFavoritos');
+            const titulo = document.getElementById('tituloLista');
+            
+            if (mostrandoSoloFavoritos) {
+                btn.className = "bg-[#b40000] border border-[#b40000] text-white px-3.5 py-2 rounded-full text-xs sm:text-sm font-semibold transition flex items-center space-x-1.5 shadow-xs";
+                titulo.innerHTML = "<span>❤️</span> Mis Favoritos";
+            } else {
+                btn.className = "bg-brand-50 border border-brand-500/40 text-[#b40000] px-3.5 py-2 rounded-full text-xs sm:text-sm font-semibold hover:bg-brand-100 transition flex items-center space-x-1.5 shadow-xs";
+                titulo.innerHTML = "<span>🍽️</span> Lugares destacados";
+            }
+            filtrarYMostrar();
+        }
+
+        function resetFiltros() {
+            filtroCategoriaActual = "Todos";
+            filtroPresupuestoActual = "Todos";
+            mostrandoSoloFavoritos = false;
+            document.getElementById('searchInput').value = "";
+            filtrarPresupuesto('Todos');
+            renderCategorias();
+            document.getElementById('tituloLista').innerHTML = "<span>🍽️</span> Lugares destacados";
+            const btn = document.getElementById('btnFavoritos');
+            btn.className = "bg-brand-50 border border-brand-500/40 text-[#b40000] px-3.5 py-2 rounded-full text-xs sm:text-sm font-semibold hover:bg-brand-100 transition flex items-center space-x-1.5 shadow-xs";
+            filtrarYMostrar();
+        }
+
+        // Modal Handler
+        function abrirModal(id) {
+            const rest = restaurantes.find(r => r.id === id);
+            if (!rest) return;
+            restauranteActivoModal = rest;
+
+            document.getElementById('modalEmojiContainer').innerText = rest.emoji;
+            document.getElementById('modalCategoria').innerText = rest.categoria;
+            document.getElementById('modalPrecio').innerText = rest.precio;
+            document.getElementById('modalCalificacion').innerText = `⭐ ${rest.calificacion}`;
+            document.getElementById('modalNombre').innerText = rest.nombre;
+            document.getElementById('modalUbicacion').innerText = `📍 ${rest.colonia}, Navojoa`;
+
+            // Render Menu
+            const menuContainer = document.getElementById('modalMenuList');
+            menuContainer.innerHTML = rest.menu.map(m => `
+                <div class="flex justify-between items-start bg-slate-50/60 p-3 rounded-xl border border-slate-100">
+                    <div>
+                        <h5 class="font-bold text-xs text-slate-800">${m.plato}</h5>
+                        <p class="text-[11px] text-slate-500 mt-0.5">${m.desc}</p>
+                    </div>
+                    <span class="font-extrabold text-[#b40000] text-xs shrink-0 ml-2">${m.precio}</span>
+                </div>
+            `).join('');
+
+            // Render Reviews
+            renderReseñasModal(rest);
+
+            switchTab('menu');
+            document.getElementById('restaurantModal').classList.remove('hidden');
+        }
+
+        function cerrarModal() {
+            document.getElementById('restaurantModal').classList.add('hidden');
+        }
+
+        function switchTab(tab) {
+            ['menu', 'reviews', 'reserva'].forEach(t => {
+                document.getElementById(`content-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).classList.remove('active');
+            });
+            document.getElementById(`content-${tab}`).classList.remove('hidden');
+            document.getElementById(`tab-${tab}`).classList.add('active');
+        }
+
+        function renderReseñasModal(rest) {
+            const list = document.getElementById('modalReviewsList');
+            if (!rest.reseñas || rest.reseñas.length === 0) {
+                list.innerHTML = `<p class="text-xs text-slate-400 italic">Sé el primero en dejar una reseña.</p>`;
+                return;
+            }
+            list.innerHTML = rest.reseñas.map(r => `
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <span>${r.foto}</span> ${r.usuario}
+                        </span>
+                        <span class="text-xs text-amber-500 font-bold">${"⭐".repeat(Math.round(r.estrofas || 5))}</span>
+                    </div>
+                    <p class="text-xs text-slate-600">${r.comentario}</p>
+                </div>
+            `).join('');
+        }
+
+        function guardarNuevaResena() {
+            if (!restauranteActivoModal) return;
+            const comentario = document.getElementById('nuevoComentario').value.trim();
+            const calif = parseFloat(document.getElementById('nuevaCalificacion').value);
+
+            if (!comentario) {
+                alert("Por favor escribe un comentario.");
+                return;
+            }
+
+            const nueva = {
+                usuario: usuarioActual.nombre,
+                foto: usuarioActual.foto,
+                estrofas: calif,
+                comentario: comentario
+            };
+
+            restauranteActivoModal.reseñas.unshift(nueva);
+            document.getElementById('nuevoComentario').value = '';
+            renderReseñasModal(restauranteActivoModal);
+            alert("¡Reseña publicada con éxito! 🐾");
+        }
+
+        function procesarReservacion(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('resNombre').value;
+            const fecha = document.getElementById('resFecha').value;
+            const hora = document.getElementById('resHora').value;
+            const personas = document.getElementById('resPersonas').value;
+
+            alert(`¡Listo, ${nombre}! Tu reservación para ${personas} personas en ${restauranteActivoModal.nombre} el día ${fecha} a las ${hora} ha sido solicitada con éxito. 🐾`);
+            cerrarModal();
+        }
+
+        // Auth Widget & Modal
+        function renderAuthWidget() {
+            document.getElementById('authContainer').innerHTML = `
+                <button onclick="abrirAuthModal()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 transition text-xs font-bold text-slate-700">
+                    <span class="text-base">${usuarioActual.foto}</span>
+                    <span class="hidden md:inline">${usuarioActual.nombre}</span>
+                </button>
+            `;
+            document.getElementById('favCount').innerText = favoritos.length;
+        }
+
+        function abrirAuthModal() {
+            document.getElementById('userInputName').value = usuarioActual.nombre === "Invitado" ? "" : usuarioActual.nombre;
+            document.getElementById('authModal').classList.remove('hidden');
+        }
+
+        function cerrarAuthModal() {
+            document.getElementById('authModal').classList.add('hidden');
+        }
+
+        function selectAvatar(emoji) {
+            avatarSeleccionadoTemp = emoji;
+            document.querySelectorAll('.avatar-opt').forEach(el => el.classList.remove('ring-2', 'ring-[#b40000]'));
+            event.currentTarget.classList.add('ring-2', 'ring-[#b40000]');
+        }
+
+        function guardarUsuario(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('userInputName').value.trim();
+            usuarioActual = { nombre: nombre, foto: avatarSeleccionadoTemp };
+            localStorage.setItem('foodie_navojoa_user', JSON.stringify(usuarioActual));
+            renderAuthWidget();
+            cerrarAuthModal();
+        }
+
+        // Add New Restaurant Modal
+        function abrirModalAgregarRestaurante() {
+            document.getElementById('addRestaurantModal').classList.remove('hidden');
+        }
+
+        function cerrarAddRestaurantModal() {
+            document.getElementById('addRestaurantModal').classList.add('hidden');
+        }
+
+        function guardarNuevoRestaurante(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('newNombre').value;
+            const categoria = document.getElementById('newCategoria').value;
+            const precio = document.getElementById('newPrecio').value;
+            const colonia = document.getElementById('newColonia').value;
+            const lat = parseFloat(document.getElementById('newLat').value);
+            const lng = parseFloat(document.getElementById('newLng').value);
+
+            const emojisMap = { "Tacos": "🌮", "Sushi": "🍣", "Mariscos": "🦐", "Cafés": "☕", "Hamburguesas": "🍔", "Postres": "🍰" };
+
+            const nuevo = {
+                id: Date.now(),
+                nombre,
+                categoria,
+                emoji: emojisMap[categoria] || "🍽️",
+                lat,
+                lng,
+                colonia,
+                precio,
+                calificacion: "5.0",
+                menu: [{ plato: "Especialidad de la casa", precio: "$100 MXN", desc: "Recomendación local." }],
+                reseñas: [{ usuario: usuarioActual.nombre, foto: usuarioActual.foto, estrofas: 5, comentario: "¡Nuevo lugar agregado a Foodie Finder!" }]
+            };
+
+            restaurantes.push(nuevo);
+            
+            const customStored = JSON.parse(localStorage.getItem('foodie_navojoa_custom_rest')) || [];
+            customStored.push(nuevo);
+            localStorage.setItem('foodie_navojoa_custom_rest', JSON.stringify(customStored));
+
+            cerrarAddRestaurantModal();
+            filtrarYMostrar();
+            alert("¡Establecimiento agregado correctamente a Navojoa! 🐾");
+        }
+    </script>
+</body>
+</html>
